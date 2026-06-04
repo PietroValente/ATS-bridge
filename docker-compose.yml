@@ -1,0 +1,72 @@
+version: "3.9"
+
+services:
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+
+  fake_ats_alpha:
+    build: ./fake_ats_alpha
+    ports:
+      - "8001:8000"
+    volumes:
+      - ./fake_ats_alpha/fixtures:/app/fixtures
+
+  fake_ats_beta:
+    build: ./fake_ats_beta
+    ports:
+      - "8002:8000"
+    volumes:
+      - ./fake_ats_beta/fixtures:/app/fixtures
+
+  talent_pool:
+    build:
+      context: .
+      dockerfile: talent_pool/Dockerfile
+    ports:
+      - "50051:50051"
+    environment:
+      REDIS_HOST: redis
+      REDIS_PORT: "6379"
+      DB_PATH: /data/talent_pool.db
+    volumes:
+      - talent_pool_data:/data
+    depends_on:
+      - redis
+
+  event_logger:
+    build: ./event_logger
+    environment:
+      REDIS_HOST: redis
+      REDIS_PORT: "6379"
+      DB_PATH: /data/event_logger.db
+    volumes:
+      - event_logger_data:/data
+    depends_on:
+      - redis
+
+  push_data_manager:
+    build:
+      context: .
+      dockerfile: push_data_manager/Dockerfile
+    ports:
+      - "8000:8000"
+    environment:
+      ATS_ALPHA_URL: http://fake_ats_alpha:8000
+      ATS_BETA_URL: http://fake_ats_beta:8000
+      TALENT_POOL_HOST: talent_pool
+      TALENT_POOL_PORT: "50051"
+      DB_PATH: /data/pdm.db
+      DJANGO_SETTINGS_MODULE: push_data_manager.settings
+    volumes:
+      - pdm_data:/data
+    depends_on:
+      - fake_ats_alpha
+      - fake_ats_beta
+      - talent_pool
+
+volumes:
+  talent_pool_data:
+  event_logger_data:
+  pdm_data:

@@ -1,0 +1,146 @@
+[
+  {
+    "candidate_uuid": "beta-001",
+    "full_name": "Anna Conti",
+    "contact": {
+      "email_address": "anna.conti@example.com",
+      "mobile": "+39 349 1234567"
+    },
+    "age": 32,
+    "position_code": "POS-77",
+    "stage": "new_application",
+    "submitted_timestamp": 1768471200
+  },
+  {
+    "candidate_uuid": "beta-002",
+    "full_name": "Stefano Russo",
+    "contact": {
+      "email_address": "stefano.russo@example.com",
+      "mobile": "+39 333 9876543"
+    },
+    "age": 29,
+    "position_code": "POS-77",
+    "stage": "screening",
+    "submitted_timestamp": 1768694400
+  },
+  {
+    "candidate_uuid": "beta-003",
+    "full_name": "Elisa Marinetti",
+    "contact": {
+      "email_address": "elisa.marinetti@example.com",
+      "mobile": "+39 347 5678901"
+    },
+    "age": 35,
+    "position_code": "POS-88",
+    "stage": "new_application",
+    "submitted_timestamp": 1769040000
+  },
+  {
+    "candidate_uuid": "beta-004",
+    "full_name": "Roberto Fontana",
+    "contact": {
+      "email_address": "roberto.fontana@example.com",
+      "mobile": "+39 348 2345678"
+    },
+    "age": 41,
+    "position_code": "POS-99",
+    "stage": "not_a_fit",
+    "submitted_timestamp": 1769558400
+  },
+  {
+    "candidate_uuid": "beta-005",
+    "full_name": "Sara Pellegrini",
+    "contact": {
+      "email_address": "sara.pellegrini@example.com",
+      "mobile": "+39 320 1234000"
+    },
+    "age": 26,
+    "position_code": "POS-77",
+    "stage": "offer_accepted",
+    "submitted_timestamp": 1770076800
+  },
+  {
+    "candidate_uuid": "beta-006",
+    "full_name": "Nicola Ferretti",
+    "contact": {
+      "email_address": "nicola.ferretti@example.com",
+      "mobile": "+39 393 5555666"
+    },
+    "age": 38,
+    "position_code": "POS-88",
+    "stage": "screening",
+    "submitted_timestamp": 1770508800
+  },
+  {
+    "candidate_uuid": "beta-007",
+    "full_name": "Francesca Vitale",
+    "contact": {
+      "email_address": "francesca.vitale@example.com",
+      "mobile": "+39 328 7778889"
+    },
+    "age": 31,
+    "position_code": "POS-99",
+    "stage": "new_application",
+    "submitted_timestamp": 1771027200
+  },
+  {
+    "candidate_uuid": "beta-008",
+    "full_name": "Andrea Marchetti",
+    "contact": {
+      "email_address": "andrea.marchetti@example.com",
+      "mobile": "+39 340 1112223"
+    },
+    "age": 44,
+    "position_code": "POS-77",
+    "stage": "not_a_fit",
+    "submitted_timestamp": 1771545600
+  },
+  {
+    "candidate_uuid": "beta-nullmobile",
+    "full_name": "Carla Nonumero",
+    "contact": {
+      "email_address": "carla.nonumero@example.com",
+      "mobile": null
+    },
+    "age": 33,
+    "position_code": "POS-88",
+    "stage": "new_application",
+    "submitted_timestamp": 1771977600
+  },
+  {
+    "candidate_uuid": "beta-minor",
+    "full_name": "Tommaso Piccolo",
+    "contact": {
+      "email_address": "tommaso.piccolo@example.com",
+      "mobile": "+39 331 9990001"
+    },
+    "age": 16,
+    "position_code": "POS-77",
+    "stage": "new_application",
+    "submitted_timestamp": 1772323200
+  },
+  {
+    "candidate_uuid": "beta-noemail",
+    "full_name": "Giovanna Senzamail",
+    "contact": {
+      "email_address": "",
+      "mobile": "+39 338 4445556"
+    },
+    "age": 27,
+    "position_code": "POS-99",
+    "stage": "screening",
+    "submitted_timestamp": 1773100800
+  },
+  {
+    "candidate_uuid": "beta-badstage",
+    "full_name": "Elena Stageerrata",
+    "contact": {
+      "email_address": "elena.stageerrata@example.com",
+      "mobile": "+39 339 7778889"
+    },
+    "age": 29,
+    "position_code": "POS-88",
+    "stage": "unknown_stage",
+    "submitted_timestamp": 1773532800
+  }
+]

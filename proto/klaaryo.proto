@@ -1,0 +1,53 @@
+syntax = "proto3";
+package klaaryo;
+
+service TalentPool {
+  rpc UpsertCandidate(NormalizedCandidate) returns (UpsertResult);
+  rpc GetCandidate(GetCandidateRequest) returns (Candidate);
+  rpc ListCandidates(ListCandidatesRequest) returns (ListCandidatesResponse);
+}
+
+message NormalizedCandidate {
+  string external_id     = 1;
+  string ats_source      = 2;
+  string first_name      = 3;
+  string last_name       = 4;
+  string email           = 5;
+  string phone           = 6;
+  int32  age             = 7;
+  string job_external_id = 8;
+  string internal_status = 9;
+  string applied_at      = 10;  // ISO 8601 string
+}
+
+message UpsertResult {
+  int64  candidate_pk   = 1;
+  bool   created        = 2;
+  repeated string changed_fields = 3;
+}
+
+message GetCandidateRequest {
+  int64 candidate_pk = 1;
+}
+
+message Candidate {
+  int64  candidate_pk   = 1;
+  string external_id    = 2;
+  string ats_source     = 3;
+  string first_name     = 4;
+  string last_name      = 5;
+  string email          = 6;
+  string phone          = 7;
+  int32  age            = 8;
+  string job_external_id = 9;
+  string internal_status = 10;
+  string applied_at     = 11;
+}
+
+message ListCandidatesRequest {
+  string ats_source = 1;  // empty string = no filter
+}
+
+message ListCandidatesResponse {
+  repeated Candidate candidates = 1;
+}
