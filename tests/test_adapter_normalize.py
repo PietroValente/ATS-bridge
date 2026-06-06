@@ -1,11 +1,14 @@
 """
-Unit tests for AlphaAdapter.normalize.
+Unit test for the normalize/validate boundary (AlphaAdapter.normalize).
 
-These tests exercise the normalization logic in isolation — no HTTP calls,
-no Django, no gRPC. The key invariant being tested is the boundary between
-normalization (adapter's job: raise on bad data) and validation (manager's
-job: decide to skip based on the normalized value).
+This is the single most important contract in the manager pipeline: the
+adapter RAISES on data it cannot parse (bad birth_date, unknown status) so
+the manager can bucket it as normalization_error, but it PASSES THROUGH data
+that parses yet fails a business rule (empty email, minor age, null phone) —
+because deciding to skip those is the manager's job, not the adapter's.
 """
+from datetime import date
+
 import pytest
 
 from adapters.alpha import AlphaAdapter
@@ -25,59 +28,38 @@ _VALID_RAW = {
 }
 
 
-def test_normalize_valid_record():
+def test_normalize_boundary():
+    # --- 1. A clean record maps every field and computes age exactly. ---
     result = _adapter.normalize(_VALID_RAW)
     assert result.external_id == "alpha-001"
     assert result.ats_source == "alpha"
     assert result.first_name == "Mario"
     assert result.last_name == "Rossi"
     assert result.email == "mario.rossi@example.com"
-    assert result.internal_status == "new"
     assert result.job_external_id == "REQ-001"
     assert result.applied_at == "2026-01-15T09:00:00Z"
-    assert result.age >= 18  # born 1990, definitely adult
+    # Born 1990-03-15; the March birthday has passed by any sync date past March,
+    # so age is exactly the year delta — verifies the age arithmetic, not a range.
+    assert result.age == date.today().year - 1990
 
-
-def test_normalize_all_status_mappings():
+    # --- 2. Every source status maps to its internal value. ---
     for raw_status, expected in [
         ("NEW", "new"),
         ("IN_REVIEW", "in_review"),
         ("REJECTED", "rejected"),
         ("HIRED", "hired"),
     ]:
-        raw = {**_VALID_RAW, "application_status": raw_status}
-        assert _adapter.normalize(raw).internal_status == expected
+        assert _adapter.normalize({**_VALID_RAW, "application_status": raw_status}).internal_status == expected
 
+    # --- 3. Structurally-invalid-but-parseable data PASSES THROUGH unchanged.
+    # The adapter must not reject these; the manager's _validate() decides. ---
+    assert _adapter.normalize({**_VALID_RAW, "email": ""}).email == ""          # → manager: missing_email
+    assert _adapter.normalize({**_VALID_RAW, "phone_number": None}).phone == ""  # null phone is tolerated
+    assert _adapter.normalize({**_VALID_RAW, "birth_date": "2012-01-15"}).age < 18  # → manager: minor_candidate
 
-def test_normalize_invalid_birth_date_raises():
-    """Adapter raises ValueError; the manager catches it as normalization_error."""
-    raw = {**_VALID_RAW, "birth_date": "not-a-date"}
+    # --- 4. Unparseable data RAISES. The manager catches these as
+    # normalization_error; the exception type is the adapter's contract. ---
     with pytest.raises(ValueError):
-        _adapter.normalize(raw)
-
-
-def test_normalize_unknown_status_raises():
-    """Adapter raises KeyError; the manager catches it as normalization_error."""
-    raw = {**_VALID_RAW, "application_status": "PENDING"}
+        _adapter.normalize({**_VALID_RAW, "birth_date": "not-a-date"})
     with pytest.raises(KeyError):
-        _adapter.normalize(raw)
-
-
-def test_normalize_empty_email_passes_through():
-    """Normalization succeeds; validation (manager) rejects on missing_email."""
-    raw = {**_VALID_RAW, "email": ""}
-    result = _adapter.normalize(raw)
-    assert result.email == ""
-
-
-def test_normalize_null_phone_becomes_empty_string():
-    raw = {**_VALID_RAW, "phone_number": None}
-    result = _adapter.normalize(raw)
-    assert result.phone == ""
-
-
-def test_normalize_minor_passes_through():
-    """Age < 18 is a valid normalize result; manager rejects it as minor_candidate."""
-    raw = {**_VALID_RAW, "birth_date": "2012-01-15"}
-    result = _adapter.normalize(raw)
-    assert result.age < 18
+        _adapter.normalize({**_VALID_RAW, "application_status": "PENDING"})

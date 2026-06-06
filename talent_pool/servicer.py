@@ -1,5 +1,6 @@
 import uuid
 from datetime import datetime, timezone
+from enum import Enum
 
 import grpc
 
@@ -7,6 +8,12 @@ import klaaryo_pb2
 import klaaryo_pb2_grpc
 import repository
 from event_bus.protocol import EventBus
+
+
+class CandidateEvent(str, Enum):
+    CREATED = "candidate.created"
+    UPDATED = "candidate.updated"
+
 
 _CANDIDATE_FIELDS = [
     "external_id",
@@ -48,9 +55,9 @@ class TalentPoolServicer(klaaryo_pb2_grpc.TalentPoolServicer):
         pk, created, changed_fields = repository.upsert_candidate(self._db, candidate)
 
         if created:
-            self._emit("candidate.created", pk, request, [])
+            self._emit(CandidateEvent.CREATED, pk, request, [])
         elif changed_fields:
-            self._emit("candidate.updated", pk, request, changed_fields)
+            self._emit(CandidateEvent.UPDATED, pk, request, changed_fields)
         # no-op (created=False, changed_fields=[]): no event
 
         return klaaryo_pb2.UpsertResult(
@@ -77,7 +84,7 @@ class TalentPoolServicer(klaaryo_pb2_grpc.TalentPoolServicer):
 
     def _emit(
         self,
-        event_type: str,
+        event_type: CandidateEvent,
         pk: str,
         request,
         changed_fields: list[str],

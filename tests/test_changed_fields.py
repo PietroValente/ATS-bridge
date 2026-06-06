@@ -1,8 +1,11 @@
 """
-Unit tests for repository.upsert_candidate.
+Unit test for repository.upsert_candidate — the change-detection engine.
 
-Verifies the changed_fields logic: the core invariant that drives
-whether talent_pool emits candidate.created, candidate.updated, or nothing.
+The (created, changed_fields) tuple this returns is what drives every event
+the system emits: created → candidate.created, changed_fields non-empty →
+candidate.updated, both empty → no event. Getting this wrong means spurious
+events or missed updates, so the full insert → no-op → update lifecycle is
+exercised end-to-end against one real SQLite file.
 """
 import os
 import tempfile
@@ -30,62 +33,37 @@ def _make_db():
     return f.name
 
 
-def test_insert_returns_created_true_and_empty_changed_fields():
+def test_upsert_lifecycle():
     db = _make_db()
     try:
+        # 1. First insert: created, no changed fields, pk is a UUID string.
         pk, created, changed = repository.upsert_candidate(db, _BASE)
         assert created is True
         assert changed == []
-        assert isinstance(pk, str) and pk
-    finally:
-        os.unlink(db)
+        assert isinstance(pk, str) and len(pk) == 36
 
-
-def test_identical_upsert_is_noop():
-    db = _make_db()
-    try:
-        pk1, _, _ = repository.upsert_candidate(db, _BASE)
+        # 2. Identical re-upsert: no-op (drives "no event"), pk is stable.
         pk2, created, changed = repository.upsert_candidate(db, _BASE)
-        assert pk1 == pk2
+        assert pk2 == pk
         assert created is False
         assert changed == []
-    finally:
-        os.unlink(db)
 
-
-def test_status_change_detected_in_changed_fields():
-    db = _make_db()
-    try:
-        repository.upsert_candidate(db, _BASE)
-        updated = {**_BASE, "internal_status": "hired"}
-        _, created, changed = repository.upsert_candidate(db, updated)
+        # 3. One field changes: detected precisely, pk unchanged.
+        _, created, changed = repository.upsert_candidate(db, {**_BASE, "internal_status": "hired"})
         assert created is False
-        assert "internal_status" in changed
-        assert len(changed) == 1
-    finally:
-        os.unlink(db)
+        assert changed == ["internal_status"]
 
-
-def test_multiple_field_changes_all_detected():
-    db = _make_db()
-    try:
-        repository.upsert_candidate(db, _BASE)
-        updated = {**_BASE, "internal_status": "rejected", "phone": "+39 06 9999999"}
-        _, created, changed = repository.upsert_candidate(db, updated)
+        # 4. Several fields change at once: all detected, none spurious.
+        _, created, changed = repository.upsert_candidate(
+            db, {**_BASE, "internal_status": "rejected", "phone": "+39 06 9999999"}
+        )
         assert created is False
         assert set(changed) == {"internal_status", "phone"}
-    finally:
-        os.unlink(db)
 
-
-def test_different_ats_source_creates_separate_record():
-    db = _make_db()
-    try:
-        pk_alpha, created_a, _ = repository.upsert_candidate(db, _BASE)
-        beta_record = {**_BASE, "ats_source": "beta"}
-        pk_beta, created_b, _ = repository.upsert_candidate(db, beta_record)
-        assert created_a is True
-        assert created_b is True
-        assert pk_alpha != pk_beta
+        # 5. Same external_id, different ats_source: the UNIQUE(ats_source,
+        # external_id) key makes this a distinct candidate with its own pk.
+        pk_beta, created, _ = repository.upsert_candidate(db, {**_BASE, "ats_source": "beta"})
+        assert created is True
+        assert pk_beta != pk
     finally:
         os.unlink(db)

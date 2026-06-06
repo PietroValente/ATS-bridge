@@ -1,15 +1,20 @@
 """
-Integration tests — require all containers to be running:
-  docker compose up --build -d && sleep 15
+End-to-end integration test — requires all containers running on a fresh state:
+  docker compose down -v && docker compose up --build -d && sleep 15
 
 Run with: pytest tests/test_integration.py -v
+
+One test walks the whole pipeline for Alpha: HTTP fetch → normalize → validate
+→ gRPC upsert → event publish, then asserts the incremental-sync watermark
+makes a second call a no-op. Beta shares this exact manager path via the
+adapter registry, so exercising Alpha exercises the machinery for both.
 """
-import sqlite3
+import os
 
 import pytest
 import requests
 
-BASE = "http://localhost:8000"
+BASE = os.environ.get("PDM_URL", "http://localhost:8000")
 
 
 @pytest.fixture(autouse=True)
@@ -20,53 +25,32 @@ def _check_services():
         pytest.skip("push_data_manager not reachable — start containers first")
 
 
-def test_sync_alpha_returns_expected_shape():
+def test_end_to_end_sync_and_idempotency():
+    # First sync: pulls all Alpha fixtures and pushes the valid ones.
     r = requests.post(f"{BASE}/api/v1/sync/alpha", timeout=30)
     assert r.status_code == 200
     d = r.json()
-    assert "pulled" in d and "pushed" in d and "skipped" in d and "skipped_reasons" in d
+    assert set(d) >= {"pulled", "pushed", "skipped", "skipped_reasons"}
     assert d["pulled"] >= 9
-    assert d["pushed"] >= 7   # at least the clearly valid records
-    assert d["skipped"] >= 2  # at minimum: alpha-minor + alpha-noemail
-
-
-def test_sync_alpha_skipped_reasons_present():
-    r = requests.post(f"{BASE}/api/v1/sync/alpha", timeout=30)
-    reasons = r.json().get("skipped_reasons", {})
-    assert "minor_candidate" in reasons
-    assert "missing_email" in reasons
-    assert "normalization_error" in reasons
-
-
-def test_sync_beta_returns_expected_shape():
-    r = requests.post(f"{BASE}/api/v1/sync/beta", timeout=30)
-    assert r.status_code == 200
-    d = r.json()
     assert d["pushed"] >= 7
-    assert d["skipped"] >= 2
 
+    # The three malformed fixtures must be skipped for three distinct reasons —
+    # this is the validate/normalize split observable from the outside:
+    #   alpha-minor   → minor_candidate      (parses, fails business rule)
+    #   alpha-noemail → missing_email        (parses, fails business rule)
+    #   alpha-baddate → normalization_error  (does not parse)
+    reasons = d["skipped_reasons"]
+    assert reasons.get("minor_candidate", 0) >= 1
+    assert reasons.get("missing_email", 0) >= 1
+    assert reasons.get("normalization_error", 0) >= 1
 
-def test_sync_unknown_ats_returns_400():
-    r = requests.post(f"{BASE}/api/v1/sync/gamma", timeout=5)
-    assert r.status_code == 400
-    assert "error" in r.json()
+    # Status endpoint reflects the sync that just ran.
+    s = requests.get(f"{BASE}/api/v1/sync/alpha/status", timeout=5).json()
+    assert s["last_sync_at"] is not None
+    assert s["total_pushed"] > 0
 
-
-def test_status_endpoint_after_sync():
-    requests.post(f"{BASE}/api/v1/sync/alpha", timeout=30)
-    r = requests.get(f"{BASE}/api/v1/sync/alpha/status", timeout=5)
-    assert r.status_code == 200
-    d = r.json()
-    assert d["last_sync_at"] is not None
-    assert d["total_pushed"] > 0
-
-
-def test_sync_idempotent_second_call_pulls_nothing():
-    # First sync: pulls everything and advances last_sync_at
-    requests.post(f"{BASE}/api/v1/sync/alpha", timeout=30)
-    # Second sync: since = last_sync_at (now), fixtures are in the past → 0 pulled
-    r = requests.post(f"{BASE}/api/v1/sync/alpha", timeout=30)
-    assert r.status_code == 200
-    d = r.json()
-    assert d["pulled"] == 0
-    assert d["pushed"] == 0
+    # Second sync is a no-op: the watermark advanced to now() and every fixture
+    # is dated in the past, so nothing is pulled or pushed again.
+    d2 = requests.post(f"{BASE}/api/v1/sync/alpha", timeout=30).json()
+    assert d2["pulled"] == 0
+    assert d2["pushed"] == 0

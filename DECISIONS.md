@@ -38,15 +38,19 @@ Redis pub/sub. The in-process queue was a non-starter: the consumer would run in
 
 ## Things the AI proposed that I rejected
 
-### 1. Job model as a first-class entity
+### 1. Hardcoded strings for event types
+
+AI initially left event types as plain hardcoded strings (`"candidate.created"`, `"candidate.updated"`). I replaced them with a `CandidateEvent(str, Enum)` in `servicer.py`: inheriting from `str` means the enum members behave as strings directly — no `.value` needed when passed to `publish()` or serialised into the JSON payload — while still giving a single source of truth for both values and a type hint on `_emit`.
+
+### 2. Job model as a first-class entity
 
 AI initially modelled Job as a Django model with its own sync flow. Rejected immediately: the spec is explicit that `job_req_id` / `position_code` is just a string that travels with the candidate. There is no Job entity in this assessment.
 
-### 2. Far-past sentinel instead of 7-day window
+### 3. Far-past sentinel instead of 7-day window
 
 The initial implementation used `datetime(2020, 1, 1)` as the first-run sentinel — the reasoning was that it guaranteed all fixtures would always be pulled regardless of their timestamps, making tests more stable. Rejected: the spec is explicit that the default window is 7 days. Hiding behind a far-past date satisfies the behaviour without satisfying the requirement. I kept the literal `timedelta(days=7)` and re-dated the fixtures to stay inside the window, so the code exercises the exact path a production incremental sync would.
 
-### 3. Autoincrement integer as candidate primary key
+### 4. Autoincrement integer as candidate primary key
 
 AI generated `candidate_pk` as a SQLite `INTEGER PRIMARY KEY AUTOINCREMENT`. Rejected: the pk leaves the service — it travels in every `candidate.created` / `candidate.updated` event as the candidate's identity. An autoincrement counter resets to 1 whenever the database is wiped and rebuilt (which is exactly how the demo is reset, `down -v`), so after a reset `pk=1` points at a different candidate than before. Any downstream consumer that stored the pk as a reference would silently corrupt. I switched to a UUID generated at insert time: globally unique, reset-safe, no central counter to coordinate. The cost is a wider key (36-char string vs int); irrelevant at this scale.
 
@@ -57,6 +61,10 @@ AI generated `candidate_pk` as a SQLite `INTEGER PRIMARY KEY AUTOINCREMENT`. Rej
 ### Raw SQL in talent_pool vs ORM
 
 `talent_pool` uses raw sqlite3 with no ORM. The trade-off: schema changes require manual SQL updates with no tooling to catch drift, and the upsert logic — SELECT, compare fields, conditional UPDATE — is more verbose than an ORM equivalent would be. The other side: `talent_pool` is pure Python with one table and three operations. An ORM (SQLAlchemy) would add a significant dependency and a layer of indirection for no reduction in actual complexity — the change-detection logic still has to be written by hand regardless, because no ORM computes `changed_fields` for you. The verbosity is contained in one 100-line file; the trade-off is worth it.
+
+### NormalizedApplication dataclass vs proto struct directly
+
+`adapters/protocol.py` defines a `NormalizedApplication` dataclass that duplicates the fields of `klaaryo_pb2.NormalizedCandidate` exactly. The reason is the self-imposed import rule: adapters should not know about the transport layer, so they cannot import `klaaryo_pb2`. The cost is a second structure to keep in sync whenever the proto changes. The alternative — importing `NormalizedCandidate` directly in the adapters — gives one schema and one place to update, at the price of coupling the adapter layer to the gRPC transport. If the transport ever changed, every adapter would need updating too.
 
 ### Redis pub/sub vs Kafka
 
@@ -69,3 +77,4 @@ Redis pub/sub is the right call for this scope: one container, zero configuratio
 ### 1. Run `makemigrations` as part of the Dockerfile
 
 I wrote the initial migration by hand (`0001_initial.py`) rather than generating it with Django. This works but is fragile — if the model changes, someone needs to remember to update the migration manually rather than running `manage.py makemigrations`. I would add a build-time `makemigrations` step in CI (not in the Dockerfile, where the DB path might not match) to catch drift.
+

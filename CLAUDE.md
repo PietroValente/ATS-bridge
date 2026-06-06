@@ -22,15 +22,12 @@ docker compose exec push_data_manager python manage.py shell -c \
 
 **Run unit tests (no containers needed):**
 ```bash
-docker run --rm --entrypoint="" -v ./tests:/tests ats-bridge-push_data_manager \
-  sh -c "pip install pytest -q && cd /app && python -m pytest /tests/test_adapter_normalize.py /tests/test_changed_fields.py -v"
+docker run --rm --entrypoint="" -v ./tests:/tests -v ./talent_pool:/talent_pool -v ./push_data_manager:/push_data_manager ats-bridge-push_data_manager sh -c "pip install pytest -q && cd /app && PYTHONPATH=/talent_pool:/push_data_manager python -m pytest /tests/test_adapter_normalize.py /tests/test_changed_fields.py -v"
 ```
 
 **Run integration tests (containers must be up):**
 ```bash
-docker run --rm --network ats-bridge_default --entrypoint="" \
-  -v ./tests:/tests ats-bridge-push_data_manager \
-  sh -c "pip install pytest requests -q && python -m pytest /tests/test_integration.py -v"
+docker run --rm --network ats-bridge_default --entrypoint="" -v ./tests:/tests -e PDM_URL=http://push_data_manager:8000 ats-bridge-push_data_manager sh -c "pip install pytest requests -q && python -m pytest /tests/test_integration.py -v"
 ```
 
 **Smoke test:**
@@ -88,7 +85,6 @@ curl → push_data_manager (Django :8000)
 
 ## Known issues / trade-offs
 
-Documented in `DECISIONS.md § Known limitations`:
 1. Watermark is `datetime.now()` not `max(applied_at)` — potential gap on concurrent ingestion (not reachable with static fixtures).
 2. Alpha `age` is derived from `date.today()` — can emit spurious `candidate.updated` on birthday boundary.
 3. Beta `age=None` collapses to `0` → skipped as `minor_candidate` instead of `normalization_error`.
